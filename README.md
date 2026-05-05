@@ -9,7 +9,7 @@ We benchmark ARTEMIS on standard causal inference datasets:
 - **JOBS**
 - **TCGA** (The Cancer Genome Atlas)
 
-## 🚀 Key Features
+## 🚀  Features
 - **Dynamic Contrastive Pairing:** Dynamically constructs positive and negative pairs based on Individual Treatment Effect (ITE) estimates.
 - **Mutual Information Penalty:** Enforces independence between the learned latent space and the treatment assignment to reduce selection bias.
 - **Ablation Studies:** Built-in experiment modes to dissect the contribution of MI and Contrastive Learning.
