@@ -35,21 +35,21 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ==============================================================================
 JOBS_PATH = "../../datasets/jobs/jobs_DW_bin.new.10.train.npz"
 
-# Modalità disponibili:
-#   "optuna"   -> ricerca iperparametri sul full model
-#   "final"    -> valutazione finale solo full model con BEST_PARAMS
-#   "ablation" -> ablation study con BEST_PARAMS
+# Available modes:
+#   "optuna"   -> hyperparameter search on full model
+#   "final"    -> final evaluation on full model using BEST_PARAMS
+#   "ablation" -> ablation study using BEST_PARAMS
 EXPERIMENT_MODE = "ablation"
 
-# jobs_DW_bin.new.10.train.npz di solito contiene 10 repliche.
-# Per final/ablation: 10 = tutte le repliche; 1/2 = test rapido.
+# jobs_DW_bin.new.10.train.npz usually contains 10 replications.
+# For final/ablation: 10 = all replications; 1/2 = quick test.
 N_SIMS = 10
 
-# Per Optuna: usa meno repliche per trial se vuoi velocizzare.
+# For Optuna: use fewer replications per trial to speed up.
 OPTUNA_TRIALS = 50
 OPTUNA_N_SIMS = 10
 
-# Stampa avanzamento training ogni PRINT_EVERY epoche.
+# Print training progress every PRINT_EVERY epochs.
 PRINT_EVERY = 25
 
 SAVE_RESULTS = True
@@ -72,19 +72,19 @@ BEST_PARAMS = {
     'latent_dim': 64,
     'alpha': 0.39885537029882545,
     'perc': 35,
-    'ite_update_freq': 2,           # era 5 — aggiorna mu_hat più spesso
+    'ite_update_freq': 2,           # was 5 — updates mu_hat more often
     'lr_treat_clf': 3e-05,
     'treat_clf_steps': 1,
     'outcome_clip_factor': 4.0,
     'use_output_clip': True,
     'margin': 1.15935272501416,
     'epochs': 400,
-    'patience': 50,                 # era 40 — dai più tempo dopo warmup
+    'patience': 50,                 # was 40 — give more time after warmup
     'lambda_mi_pos': 0.025,
     'mi_ramp_epochs': 80,          # gradual MI activation; avoids early over-regularization
     'mi_start_epoch': 60,           # delayed safe MI for JOBS
     'mi_pos_min_count': 32,
-    'warmup_epochs': 15,            # era 46 — il contrastivo deve attivarsi presto
+    'warmup_epochs': 15,            # was 46 — contrastive loss must activate early
     'clip_norm': 5.0,
     'main_weight_decay': 0.0012428049792646263,
     'clf_weight_decay': 3.2143995784148505e-05,
@@ -311,7 +311,7 @@ class JobsLoader(AbstractCausalLoader):
         if not os.path.exists(self.path):
             raise FileNotFoundError(
                 f"Jobs file not found at:\n{self.path}\n"
-                "Controlla che il path sia corretto oppure cambia JOBS_PATH in alto nello script."
+                "Check that the path is correct or change JOBS_PATH at the top of the script."
             )
 
         data = np.load(self.path)
@@ -1677,7 +1677,7 @@ def suggest_jobs_params(trial):
 
         # Dynamic pairing
         'ite_update_freq': trial.suggest_categorical('ite_update_freq', [1, 2, 3, 5]),
-        'warmup_epochs': trial.suggest_int('warmup_epochs', 5, 25),   # era 5-50, ora limitato
+        'warmup_epochs': trial.suggest_int('warmup_epochs', 5, 25),   # was 5-50, now limited
 
         # Local MI — safe search space for Jobs.
         # Keep MI active, but weak, delayed, and gradually ramped.

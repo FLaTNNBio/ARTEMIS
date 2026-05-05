@@ -1,36 +1,36 @@
 """
 latent_viz_artemis.py
 =====================
-Visualizzazione quantitativa dello spazio latente: ARTEMIS vs CFRNet.
+Quantitative visualization of the latent space: ARTEMIS vs CFRNet.
 
-Questo script:
-1. Allena ARTEMIS e CFRNet sulla simulazione 0 di IHDP
-2. Estrae le rappresentazioni latenti sull'insieme di test
-3. Applica t-SNE e UMAP per riduzione dimensionale a 2D
-4. Genera figure publication-quality con 4 pannelli:
-   - ARTEMIS embeddings colorati per ITE vero
-   - ARTEMIS embeddings colorati per gruppo di trattamento
-   - CFRNet embeddings colorati per ITE vero
-   - CFRNet embeddings colorati per gruppo di trattamento
-5. Calcola metriche quantitative sullo spazio latente:
-   - Linear MMD tra treated e control
-   - Correlazione di Spearman tra distanze latenti e |ITE_i - ITE_j|
-   - Distanza media al nearest neighbor di trattamento opposto (NOTD)
-   - AUC del classificatore lineare di trattamento (treatment probe)
+This script:
+1. Trains ARTEMIS and CFRNet on simulation 0 of IHDP
+2. Extracts latent representations on the test set
+3. Applies t-SNE and UMAP for 2D dimensionality reduction
+4. Generates publication-quality figures with 4 panels:
+   - ARTEMIS embeddings colored by true ITE
+   - ARTEMIS embeddings colored by treatment group
+   - CFRNet embeddings colored by true ITE
+   - CFRNet embeddings colored by treatment group
+5. Computes quantitative metrics on the latent space:
+   - Linear MMD between treated and control
+   - Spearman correlation between latent distances and |ITE_i - ITE_j|
+   - Mean distance to the nearest neighbor of opposite treatment (NOTD)
+   - AUC of the linear treatment classifier (treatment probe)
 
 Output:
     latent_viz_outputs/
-        latent_tsne_umap.pdf / .png     (figura principale 2×4)
-        latent_metrics.csv              (metriche quantitative)
-        latent_metrics_latex.txt        (tabella LaTeX pronta)
+        latent_tsne_umap.pdf / .png     (main figure 2×4)
+        latent_metrics.csv              (quantitative metrics)
+        latent_metrics_latex.txt        (ready LaTeX table)
 
-Dipendenze:
+Dependencies:
     pip install torch numpy pandas matplotlib scikit-learn umap-learn requests
 
-Uso:
+Usage:
     python latent_viz_artemis.py
-    python latent_viz_artemis.py --sim_id 0 --n_epochs 400 --umap      (con UMAP)
-    python latent_viz_artemis.py --no_umap                              (solo t-SNE)
+    python latent_viz_artemis.py --sim_id 0 --n_epochs 400 --umap      (with UMAP)
+    python latent_viz_artemis.py --no_umap                              (t-SNE only)
 """
 
 import os
@@ -110,7 +110,7 @@ CFRNET_PARAMS = {
 # DATA LOADING
 # ==============================================================================
 def download_url(url: str, save_path: str, chunk_size: int = 128):
-    LOGGER.info(f"Scaricando {url} -> {save_path}")
+    LOGGER.info(f"Downloading {url} -> {save_path}")
     r = requests.get(url, stream=True)
     with open(save_path, 'wb') as fd:
         for chunk in r.iter_content(chunk_size=chunk_size):
@@ -676,12 +676,12 @@ def tsne_embed(Z: np.ndarray, perplexity: float = 30.0, seed: int = 42) -> np.nd
 def umap_embed(Z: np.ndarray, n_neighbors: int = 15, seed: int = 42) -> Optional[np.ndarray]:
     try:
         import umap
-        LOGGER.info(f"UMAP su {Z.shape[0]} punti ({Z.shape[1]}D → 2D)...")
+        LOGGER.info(f"UMAP on {Z.shape[0]} points ({Z.shape[1]}D → 2D)...")
         reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors,
                             random_state=seed, verbose=False)
         return reducer.fit_transform(Z)
     except ImportError:
-        LOGGER.warning("umap-learn non installato. Salto UMAP.")
+        LOGGER.warning("umap-learn not installed. Skipping UMAP.")
         return None
 
 
@@ -725,9 +725,9 @@ def make_figure(
              (solo se use_umap=True)
     Bottom : metrics bar chart (full width, sotto le scatter)
 
-    Ogni colonna ha un colore di bordo per identificare il modello:
-      blu  = ARTEMIS
-      rosso = CFRNet
+    Each column has a border color to identify the model:
+      blue = ARTEMIS
+      red  = CFRNet
     """
     has_umap = use_umap and umap_artemis is not None
     scatter_rows = 2 if has_umap else 1
@@ -750,7 +750,7 @@ def make_figure(
 
     tau_min, tau_max = float(tau_true.min()), float(tau_true.max())
 
-    # Colori bordo pannello per modello
+    # Panel border colors by model
     BORDER_ART = '#2563eb'  # blu ARTEMIS
     BORDER_CFR = '#dc2626'  # rosso CFRNet
 
@@ -770,7 +770,7 @@ def make_figure(
                             f"ARTEMIS – {method_name}\n(treatment group)",
                             f"{method_name}-1", "",
                             colorbar=False, s=18, alpha=0.75)
-        # Legenda manuale binaria
+        # Manual binary legend
         from matplotlib.patches import Patch
         ax.legend(handles=[
             Patch(facecolor='#1a54c7', label='Control (T=0)'),

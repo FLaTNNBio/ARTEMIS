@@ -1,23 +1,23 @@
 """
 noise_sensitivity_artemis.py
 ============================
-Analisi della sensibilità al rumore nelle stime pseudo-ITE di ARTEMIS.
+Sensitivity analysis to noise in ARTEMIS pseudo-ITE estimates.
 
-Domanda di ricerca: come si comporta ARTEMIS quando le stime pseudo-ITE
-usate per la costruzione dei pair sono corrotte da rumore?
+Research question: how does ARTEMIS behave when the pseudo-ITE estimates
+used for the construction of pairs are corrupted by noise?
 
-Questo script testa ARTEMIS iniettando rumore gaussiano sulle stime pseudo-ITE
-a ogni step di aggiornamento del pair-sampler.
-Il livello di rumore è parametrizzato come multiplo della std degli ITE stimati:
+This script tests ARTEMIS by injecting Gaussian noise on the pseudo-ITE estimates
+at each update step of the pair-sampler.
+The noise level is parameterized as a multiple of the std of the estimated ITEs:
     tau_noisy = tau_clean + noise_factor * std(tau_clean) * N(0, I)
 
-Livelli di rumore testati:
-    0.0  → nessun rumore (baseline ARTEMIS)
-    0.25 → rumore leggero
-    0.5  → rumore moderato
-    1.0  → rumore = std(ITE)  (segnale ≈ rumore)
-    2.0  → rumore doppio della std
-    4.0  → rumore molto elevato (pair quasi casuali)
+Noise levels tested:
+    0.0  → no noise (baseline ARTEMIS)
+    0.25 → light noise
+    0.5  → moderate noise
+    1.0  → noise = std(ITE) (signal ≈ noise)
+    2.0  → noise = double the std
+    4.0  → very high noise (nearly random pairs)
 
 Output:
     noise_sensitivity_outputs/
@@ -71,7 +71,7 @@ NOISE_FACTORS = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0]
 OUT_DIR = "noise_sensitivity_outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# Configurazione ARTEMIS (dai parametri ottimali IHDP)
+# ARTEMIS configuration (from optimal IHDP parameters)
 BEST_PARAMS = {
     'lr': 0.002706384665268061,
     'batch_size': 128,
@@ -303,7 +303,7 @@ def _empty_pair_batch(X, T, Y):
 
 class NoisyDynamicDataset(Dataset):
     """
-    Dataset che supporta l'iniezione controllata di rumore sulle stime pseudo-ITE.
+    Dataset that supports controlled noise injection on pseudo-ITE estimates.
 
     noise_factor: std del rumore = noise_factor * std(tau_estimated)
                   0.0 → nessun rumore (ARTEMIS standard)
@@ -787,9 +787,9 @@ def plot_noise_sensitivity(df_agg: pd.DataFrame, out_dir: str):
 
 
 def print_latex_table(df_agg: pd.DataFrame):
-    """Stampa una tabella LaTeX pronta per il paper."""
+    """Prints a LaTeX table ready for the paper."""
     print("\n" + "=" * 70)
-    print("TABELLA LATEX (noise sensitivity)")
+    print("LATEX TABLE (noise sensitivity)")
     print("=" * 70)
     print(r"\begin{table}[h]")
     print(r"\centering")
@@ -868,10 +868,10 @@ def main():
     agg_path = os.path.join(OUT_DIR, "noise_sensitivity_aggregate.csv")
     df_all.to_csv(per_sim_path, index=False, sep=';')
     df_agg.to_csv(agg_path, index=False, sep=';')
-    LOGGER.info(f"Risultati per sim: {per_sim_path}")
-    LOGGER.info(f"Risultati aggregati: {agg_path}")
+    LOGGER.info(f"Results per sim: {per_sim_path}")
+    LOGGER.info(f"Aggregated results: {agg_path}")
 
-    # Stampa summary
+    # Print summary
     print("\n" + "=" * 70)
     print("SUMMARY NOISE SENSITIVITY")
     print("=" * 70)
