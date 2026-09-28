@@ -978,7 +978,15 @@ class DoseAwareNet(nn.Module):
         preds = []
         for k in range(self.num_treatments):
             ak = torch.full((B,), k, dtype=torch.long, device=x.device)
-            dk = eval_d[:, k] if eval_d.shape[1] == self.num_treatments else eval_d[:, k - 1]
+            if k == 0:
+                # Treatment 0 is the untreated control and therefore has no
+                # active-treatment dose.  The legacy [N, K-1] representation
+                # previously indexed column -1 here.
+                dk = torch.zeros(B, dtype=eval_d.dtype, device=x.device)
+            elif eval_d.shape[1] == self.num_treatments:
+                dk = eval_d[:, k]
+            else:
+                dk = eval_d[:, k - 1]
             _, yk, _ = self.forward(x, ak, dk)
             preds.append(yk.squeeze(1))
         return torch.stack(preds, dim=1)

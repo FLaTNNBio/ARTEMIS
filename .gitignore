@@ -1,1 +1,19 @@
 /datasets
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Environments
+conda
+.venv/
+venv/
+
+# Experiment runs, results and analyses (kept local only)
+/experiments/
+/tests/
+/outputs/
+/results/
+/reproducibility/
+/scripts/tcga/audit_tcga_data.py

@@ -54,7 +54,8 @@ PRINT_EVERY = 25
 
 SAVE_RESULTS = True
 OUT_DIR = "ablation_outputs_jobs_gmi"
-os.makedirs(OUT_DIR, exist_ok=True)
+if __name__ == '__main__':
+    os.makedirs(OUT_DIR, exist_ok=True)
 
 BEST_PARAMS_JSON = os.path.join(OUT_DIR, "jobs_optuna_best_params.json")
 BEST_PARAMS_CSV = os.path.join(OUT_DIR, "jobs_optuna_best_params.csv")
@@ -519,7 +520,7 @@ def make_pairs_random(X, T, Y, n_pairs, seed=None):
     return X[idx_a], Y[idx_a], T[idx_a], X[idx_b], Y[idx_b], T[idx_b], labels
 
 
-def make_pairs_from_hat(X, T, Y, mu0_hat, mu1_hat, thr, n_pairs, seed=None):
+def make_pairs_from_hat(X, T, Y, mu0_hat, mu1_hat, thr, n_pairs, seed=None, audit_callback=None):
     rng = np.random.default_rng(seed)
     tau = (mu1_hat - mu0_hat).reshape(-1)
     n = tau.shape[0]
@@ -580,6 +581,9 @@ def make_pairs_from_hat(X, T, Y, mu0_hat, mu1_hat, thr, n_pairs, seed=None):
     idx_a = np.array(idx_a)
     idx_b = np.array(idx_b)
     labels = np.array(labels, dtype=np.int64)
+
+    if audit_callback is not None:
+        audit_callback(idx_a.copy(), idx_b.copy(), labels.copy())
 
     return X[idx_a], Y[idx_a], T[idx_a], X[idx_b], Y[idx_b], T[idx_b], labels
 
@@ -689,7 +693,8 @@ class DynamicContrastiveCausalDS(Dataset):
                 self.current_mu1_hat,
                 self.thr,
                 self.bs,
-                seed=seed
+                seed=seed,
+                audit_callback=getattr(self, 'audit_callback', None)
             )
         elif self.pair_mode == 'random':
             out = make_pairs_random(
@@ -896,12 +901,27 @@ def predict_hat_y(encoder, predictor, X_np, y_mean, y_std, device):
     return hat_y_norm * y_std + y_mean
 
 
+def sample_population_mi_indices(rng, n_train, batch_size):
+    """Uniform without replacement within a batch; independent of pair sampling."""
+    return rng.choice(n_train, size=min(2 * batch_size, n_train), replace=False)
+
+
+def checkpoint_eligible(epoch, start_epoch):
+    return epoch >= start_epoch
+
+
 def train_single_simulation(
         sim_idx: int,
         data_sim: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         device: str,
         hyperparams: Dict[str, Any],
+        *, split_indices=None, model_seed=None, checkpoint_start_epoch=0,
+        observer=None,
 ) -> Dict[str, float]:
+    # Optional reviewer-campaign controls; legacy calls retain their defaults.
+    split_seed = sim_idx
+    if model_seed is not None:
+        sim_idx = int(model_seed)
     torch.manual_seed(sim_idx)
     np.random.seed(sim_idx)
 
@@ -918,7 +938,10 @@ def train_single_simulation(
     if num_treatments != 2:
         raise ValueError(f"Jobs RPol/ATT assumes binary treatment. Found num_treatments={num_treatments}")
 
-    train_idx, val_idx, test_idx = split_train_val_test_jobs(X_s, T_s, E_s, seed=sim_idx)
+    train_idx, val_idx, test_idx = (
+        split_train_val_test_jobs(X_s, T_s, E_s, seed=split_seed)
+        if split_indices is None else split_indices
+    )
 
     full_jobs_att_ref = compute_jobs_att_reference(T_s, Y_s, E_s)
 
@@ -1000,7 +1023,7 @@ def train_single_simulation(
     PAIR_MODE = hyperparams.get('pair_mode', 'dynamic_ite')
     MI_MODE = hyperparams.get('mi_mode', 'local')  # 'local' or 'global'
 
-    if MI_MODE not in ['local', 'global']:
+    if MI_MODE not in ['local', 'global', 'true_global']:
         raise ValueError(f"Unknown mi_mode={MI_MODE}. Use 'local' or 'global'.")
 
     max_y_obs_std = float(np.max(np.abs(Y_train)))
@@ -1060,6 +1083,11 @@ def train_single_simulation(
     )
 
     early_stopper = EarlyStoppingMetric(patience=PATIENCE)
+    best_epoch = None
+    global_rng = np.random.default_rng(np.random.SeedSequence([sim_idx, 93417]))
+    if observer is not None:
+        ds_train.audit_callback = observer.pair_batch
+        observer.initialize(locals())
 
     static_pair_initialized = False
     epoch = 0
@@ -1078,6 +1106,8 @@ def train_single_simulation(
 
     for epoch in range(EPOCHS):
         ds_train.set_epoch(epoch)
+        if observer is not None:
+            observer.start_epoch(epoch)
 
         # Ramp over 15 epochs after warmup (was 80 — too slow, model was
         # stopping before contrastive ever reached its full weight).
@@ -1178,6 +1208,22 @@ def train_single_simulation(
                             t_mi_det = torch.cat([t1_idx, t2_idx], dim=0)
                         use_mi_this_batch = True
 
+                elif MI_MODE == 'true_global':
+                    # Independent uniform units, not endpoints or pair-conditioned units.
+                    global_indices = sample_population_mi_indices(global_rng,
+                        len(train_idx), BATCH_SIZE)
+                    if len(global_indices) >= POS_MIN_COUNT:
+                        z_global = encoder(torch.as_tensor(X_train[global_indices],
+                            dtype=torch.float32, device=device))
+                        t_global = torch.as_tensor(T_train[global_indices],
+                            dtype=torch.long, device=device)
+                        z_mi_det, t_mi_det = z_global.detach(), t_global
+                        use_mi_this_batch = True
+
+            if observer is not None:
+                observer.mi_batch(MI_MODE, use_mi_this_batch,
+                    global_indices if MI_MODE == 'true_global' and use_mi_this_batch else None)
+
             if use_mi_this_batch:
                 for _ in range(TREAT_CLF_STEPS):
                     opt_treat_clf.zero_grad()
@@ -1220,6 +1266,8 @@ def train_single_simulation(
                 if MI_MODE == 'local':
                     z_mi = torch.cat([z1[pos_mask], z2[pos_mask]], dim=0)
                     t_mi = torch.cat([t1_idx[pos_mask], t2_idx[pos_mask]], dim=0)
+                elif MI_MODE == 'true_global':
+                    z_mi, t_mi = z_global, t_global
                 else:  # MI_MODE == 'global'
                     z_mi = torch.cat([z1, z2], dim=0)
                     t_mi = torch.cat([t1_idx, t2_idx], dim=0)
@@ -1265,7 +1313,13 @@ def train_single_simulation(
         if not np.isfinite(val_rpol):
             val_rpol = 999.0
 
-        early_stopper(val_rpol, encoder, predictor)
+        previous_best = early_stopper.best_metric
+        if checkpoint_eligible(epoch, checkpoint_start_epoch):
+            early_stopper(val_rpol, encoder, predictor)
+            if early_stopper.best_metric < previous_best:
+                best_epoch = epoch
+        if observer is not None:
+            observer.end_epoch(locals(), best_epoch == epoch)
 
         should_print = (
             epoch == 0
@@ -1336,6 +1390,8 @@ def train_single_simulation(
     # test_rpol — both issues are corrected here.
     # ------------------------------------------------------------------
     early_stopper.restore_best_weights(encoder, predictor)
+    if checkpoint_start_epoch > 0 and best_epoch is None:
+        raise RuntimeError('No eligible checkpoint was selected')
 
     # Recompute val predictions with best weights (used only for reporting).
     hat_y_val_best = predict_hat_y(encoder, predictor, X_val, y_mean, y_std, device)
@@ -1386,6 +1442,9 @@ def train_single_simulation(
         'epochs': epoch + 1,
     }
     out.update(split_diag)
+    if observer is not None:
+        observer.finish(locals())
+    out['best_epoch'] = best_epoch
     return out
 
 
