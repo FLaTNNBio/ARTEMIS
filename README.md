@@ -74,7 +74,11 @@ By default, results and model artifacts are saved in the output directories (e.g
 
 ## 🧠 Code Structure
 
-- `scripts/jobs/train_jobs.py`: Main script for the JOBS dataset. Contains the Data Loader, CATE Encoder, Outcome Heads, and the training loop.
+- `artemis/models/cate.py`: ARTEMIS networks for binary treatments (IHDP, JOBS): `CATEEncoder`, `OutcomeHead`, `TreatmentClassifier`.
+- `artemis/models/dose.py`: ARTEMIS networks for multiple treatments with continuous dose (TCGA): `Encoder`, `DoseAwareNet`, `TreatmentClassifier`.
+- `artemis/evaluation/`: Evaluation and diagnostic utilities.
+- `scripts/ihdp/gmi.py`: Main script for the IHDP dataset (data loader and training loop).
+- `scripts/jobs/train_jobs.py`: Main script for the JOBS dataset (data loader and training loop).
 - `scripts/tcga/train_baselines.py`: Contains the baseline and comparative algorithms for the TCGA dataset.
 - `scripts/tcga/train_tcga.py`: Main script for the TCGA dataset benchmark.
 - `artemis/utils/losses.py`: Shared loss functions.
